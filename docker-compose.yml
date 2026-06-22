@@ -1,0 +1,43 @@
+# Déploiement d'un site statique derrière Traefik (Coolify) — version HTTPS.
+# Aucun port hôte n'est mappé : tout le trafic passe par Traefik via les labels.
+services:
+  keynote-nsa:
+    image: nginx:alpine
+    container_name: keynote-nsa
+    restart: unless-stopped
+    # Contenu servi : bind du dossier ./site (index.html + éventuels assets).
+    # En lecture seule (:ro) — nginx n'a pas besoin d'écrire.
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      # Réseau Docker sur lequel Traefik doit joindre ce conteneur
+      - "traefik.docker.network=coolify"
+
+      # ---------- Service (port interne du conteneur) ----------
+      - "traefik.http.services.keynote-nsa.loadbalancer.server.port=80"
+
+      # ---------- Routeur HTTPS ----------
+      - "traefik.http.routers.keynote-nsa.rule=Host(`keynote-nsa.51.178.54.74.nip.io`)"
+      - "traefik.http.routers.keynote-nsa.entrypoints=https"
+      - "traefik.http.routers.keynote-nsa.tls=true"
+      - "traefik.http.routers.keynote-nsa.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.keynote-nsa.service=keynote-nsa"
+
+      # ---------- Routeur HTTP -> redirection 301 vers HTTPS ----------
+      - "traefik.http.routers.keynote-nsa-http.rule=Host(`keynote-nsa.51.178.54.74.nip.io`)"
+      - "traefik.http.routers.keynote-nsa-http.entrypoints=http"
+      - "traefik.http.routers.keynote-nsa-http.service=keynote-nsa"
+      - "traefik.http.routers.keynote-nsa-http.middlewares=keynote-nsa-redirect"
+
+      # ---------- Middleware de redirection ----------
+      - "traefik.http.middlewares.keynote-nsa-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.keynote-nsa-redirect.redirectscheme.permanent=true"
+
+# Le réseau coolify existe déjà (créé par Coolify) -> on le déclare externe,
+# on ne le recrée pas.
+networks:
+  coolify:
+    external: true
